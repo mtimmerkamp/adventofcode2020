@@ -20,7 +20,21 @@ fn check_validity(numbers: &Vec<u64>, preamble_length: usize) -> Option<usize> {
 }
 
 
-// fn find_continguous_set(numbers: &Vec<u64>, )
+fn find_continguous_set(numbers: &Vec<u64>, number: u64) -> &[u64] {
+    for i in 0..=numbers.len() {
+        let mut sum = 0;
+        for (j, n) in numbers[i..].iter().enumerate() {
+            sum += n;
+            if sum > number {
+                break;
+            }
+            else if sum == number {
+                return &numbers[i..=j+i];
+            }
+        }
+    }
+    &numbers[..]
+}
 
 
 fn read_numbers(filename: &str) -> Vec<u64> {
@@ -39,15 +53,28 @@ fn read_numbers(filename: &str) -> Vec<u64> {
     numbers
 }
 
+fn part2(numbers: &Vec<u64>, preamble_length: usize) -> u64 {
+    let i = check_validity(&numbers, preamble_length).unwrap();
+    let range = find_continguous_set(&numbers, numbers[i]);
+
+    let min = range.iter().min().unwrap();
+    let max = range.iter().max().unwrap();
+
+    min + max
+}
+
 
 fn main() {
     let filename = "inputs/09.txt";
     let numbers = read_numbers(filename);
 
-    if let Some(i) = check_validity(&numbers, 25) {
+    const PREAMBLE_LENGTH: usize = 25;
+
+    if let Some(i) = check_validity(&numbers, PREAMBLE_LENGTH) {
         println!("Part1: Valid until {}: {}", i, numbers[i]);
     }
 
+    println!("Part2: Sum of min & max: {}", part2(&numbers, PREAMBLE_LENGTH));
 }
 
 #[cfg(test)]
@@ -63,5 +90,13 @@ mod tests09 {
         if let Some(i) = i {
             assert_eq!(numbers[i], 127);
         }
+    }
+
+    #[test]
+    fn test02() {
+        let filename = "test_inputs/09_01.txt";
+        let numbers = read_numbers(filename);
+
+        assert_eq!(part2(&numbers, 5), 62);
     }
 }
