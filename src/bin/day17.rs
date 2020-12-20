@@ -30,7 +30,13 @@ impl Tile {
     }
 }
 
-type Coord = (i32, i32, i32);
+fn increment(c: Coord, v: i32) -> Coord {
+    let mut c = c.clone();
+    for i in 0..c.len() {
+        c[i] += v
+    }
+    c
+}
 
 struct World {
     active_tiles: HashSet<Coord>,
@@ -70,7 +76,10 @@ impl World {
         for (y, line) in lines.iter().enumerate() {
             for (x, c) in line.chars().enumerate() {
                 let tile = Tile::from_char(c).unwrap();
-                world.set((x as i32, y as i32, z), tile);
+                let mut coord = Coord::default();
+                coord[0] = x as i32;
+                coord[1] = y as i32;
+                world.set(coord, tile);
             }
         }
 
@@ -78,16 +87,14 @@ impl World {
     }
 
     fn bounding_rect(&self) -> (Coord, Coord) {
-        let mut min = (0, 0, 0);
-        let mut max = (0, 0, 0);
+        let mut min = Coord::default();
+        let mut max = Coord::default();
 
         for coord in &self.active_tiles {
-            min.0 = i32::min(min.0, coord.0);
-            min.1 = i32::min(min.1, coord.1);
-            min.2 = i32::min(min.2, coord.2);
-            max.0 = i32::max(max.0, coord.0);
-            max.1 = i32::max(max.1, coord.1);
-            max.2 = i32::max(max.2, coord.2);
+            for i in 0..min.len() {
+                min[i] = min[i].min(coord[i]);
+                max[i] = max[i].max(coord[i]);
+            }
         }
 
         (min, max)
@@ -96,8 +103,8 @@ impl World {
     fn count_neighbors(&self, coord: Coord) -> u32 {
         let mut neighbors = 0;
 
-        let start = (coord.0 - 1, coord.1 - 1, coord.2 - 1);
-        let end = (coord.0 + 1, coord.1 + 1, coord.2 + 1);
+        let start = increment(coord.clone(), -1);
+        let end = increment(coord.clone(), 1);
 
         for neighbor_coord in iter_coords(start, end) {
             if coord == neighbor_coord {
@@ -115,8 +122,8 @@ impl World {
 
     fn evolve(&self) -> World {
         let (min, max) = self.bounding_rect();
-        let min = (min.0 - 1, min.1 - 1, min.2 - 1);
-        let max = (max.0 + 1, max.1 + 1, max.2 + 1);
+        let min = increment(min.clone(), -1);
+        let max = increment(max.clone(), 1);
 
         let mut new_active_tiles = HashSet::new();
         for coord in iter_coords(min, max) {
@@ -168,18 +175,18 @@ impl Iterator for CoordIter {
                 return Some(current.clone());
             },
             Some(mut current) => {
-                // Calculate next coord.
-                current.2 += 1;
-                if current.2 > self.end.2 {
-                    current.2 = self.start.2;
-                    current.1 += 1;
-                    if current.1 > self.end.1 {
-                        current.1 = self.start.1;
-                        current.0 += 1;
-                        if current.0 > self.end.0 {
-                            return None;
-                        }
+                let mut correct = false;
+                for i in (0..current.len()).rev() {
+                    current[i] += 1;
+                    if current[i] <= self.end[i] {
+                        correct = true;
+                        break;
+                    } else {
+                        current[i] = self.start[i];
                     }
+                }
+                if !correct {
+                    return None;
                 }
 
                 self.last = Some(current);
@@ -195,22 +202,54 @@ fn iter_coords(start: Coord, end: Coord) -> CoordIter {
     }
 }
 
-impl fmt::Display for World {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (min, max) = self.bounding_rect();
-        for z in min.2..=max.2 {
-            f.write_fmt(format_args!("z = {}\n", z))?;
-            for y in min.1..=max.1 {
+fn iter_coord_along(start: Coord, end: Coord, axis: usize) -> CoordIter {
+    let mut new_end = start.clone();
+    new_end[axis] = end[axis];
+
+    CoordIter {
+        start, end: new_end, last: None,
+    }
+}
+
+impl World {
+    fn format_dim(
+        &self, f: &mut fmt::Formatter<'_>, prefix: &String,
+        (min, max): (Coord, Coord), axis: usize
+    ) -> fmt::Result {
+        if axis == 0 {
+            panic!("Format for axis 0 is not implemented.");
+        }
+        else if axis == 1 {
+            f.write_fmt(format_args!("{}\n", &prefix))?;
+            for y in iter_coord_along(min, max, 1) {
                 let mut chars = Vec::new();
-                for x in min.0..=max.0 {
-                    chars.push(self.get((x, y, z)).to_char());
+                for x in iter_coord_along(y, max, 0) {
+                    chars.push(self.get(x).to_char());
                 }
                 f.write_str(&chars.iter().collect::<String>())?;
                 f.write_str("\n")?;
             }
             f.write_str("\n")?;
         }
+        else {
+            for xi in iter_coord_along(min, max, axis) {
+                let prefix = match prefix.len() {
+                    0 => format!("x{{{}}} = {}", axis, xi[axis]),
+                    _ => format!("{}, x{{{}}} = {}", prefix, axis, xi[axis]),
+                };
+                self.format_dim(f, &prefix, (xi, max), axis - 1)?;
+            }
+        }
         Ok(())
+    }
+}
+
+impl fmt::Display for World {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (min, max) = self.bounding_rect();
+
+        self.format_dim(f, &String::new(), (min, max), min.len()-1)
     }
 }
 
@@ -222,7 +261,7 @@ fn load_world(filename: &str) -> World {
     World::from_lines(&lines)
 }
 
-fn part1(world: &World, display: bool) -> u32 {
+fn part1(world: &World, rounds: u32, display: bool) -> u32 {
     let start_world = world;
 
     let mut world: World = World::new();
@@ -232,7 +271,7 @@ fn part1(world: &World, display: bool) -> u32 {
         println!("Before and cycles:");
         println!("{}", start_world);
     }
-    for cycle in 1..=6 {
+    for cycle in 1..=rounds {
         if first_evolution {
             world = start_world.evolve();
             first_evolution = false;
@@ -250,12 +289,17 @@ fn part1(world: &World, display: bool) -> u32 {
     world.count_active_tiles()
 }
 
+
+type Coord = [i32; 3];  // for part 1
+// type Coord = [i32; 4];  // for part 2
+
 fn main() {
     // let filename = "test_inputs/17_01.txt";
     let filename = "inputs/17.txt";
     let world = load_world(filename);
 
-    println!("Part 1: Active tiles: {}", part1(&world, false));
+    println!("Part 1: Active tiles: {}", part1(&world, 6, false));
+    // For part 2, change Coord above.
 }
 
 #[cfg(test)]
@@ -266,6 +310,6 @@ mod tests17 {
     fn test01() {
         let filename = "test_inputs/17_01.txt";
         let world = load_world(filename);
-        assert_eq!(part1(&world, false), 112);
+        assert_eq!(part1(&world, 6, false), 112);
     }
 }
