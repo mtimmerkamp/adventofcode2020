@@ -72,7 +72,6 @@ impl World {
     fn from_lines(lines: &Vec<String>) -> World {
         let mut world = World::new();
 
-        let z = 0;
         for (y, line) in lines.iter().enumerate() {
             for (x, c) in line.chars().enumerate() {
                 let tile = Tile::from_char(c).unwrap();
