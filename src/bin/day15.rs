@@ -68,7 +68,7 @@ mod tests15 {
     }
 
     #[test]
-    fn test01() {
+    fn test02() {
         let results = [436, 1, 10, 27, 78, 438, 1836];
 
         for (i, result) in results.iter().enumerate() {
